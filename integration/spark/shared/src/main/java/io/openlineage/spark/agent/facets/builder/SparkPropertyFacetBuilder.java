@@ -6,6 +6,7 @@
 package io.openlineage.spark.agent.facets.builder;
 
 import io.openlineage.spark.agent.facets.SparkPropertyFacet;
+import io.openlineage.spark.agent.util.ScalaConversionUtils;
 import io.openlineage.spark.agent.util.SparkSessionUtils;
 import io.openlineage.spark.api.CustomFacetBuilder;
 import io.openlineage.spark.api.OpenLineageContext;
@@ -25,8 +26,10 @@ public class SparkPropertyFacetBuilder
   private static final Set<String> DEFAULT_ALLOWED_PROPERTIES =
       new HashSet<>(Arrays.asList("spark.master", "spark.app.name"));
   private static final String ALLOWED_PROPERTIES_KEY = "spark.openlineage.capturedProperties";
+  private static final String CAPTURE_ALL_WILDCARD = "*";
   private SparkConf conf;
   private Set<String> allowedProperties;
+  private boolean captureAll;
 
   public SparkPropertyFacetBuilder(OpenLineageContext context) {
     fillConfAndAllowedProperties(context.getSparkContext().map(SparkContext::getConf).orElse(null));
@@ -50,6 +53,7 @@ public class SparkPropertyFacetBuilder
         conf.contains(ALLOWED_PROPERTIES_KEY)
             ? Arrays.stream(conf.get(ALLOWED_PROPERTIES_KEY).split(",")).collect(Collectors.toSet())
             : DEFAULT_ALLOWED_PROPERTIES;
+    captureAll = allowedProperties.contains(CAPTURE_ALL_WILDCARD);
   }
 
   @Override
@@ -61,27 +65,31 @@ public class SparkPropertyFacetBuilder
   public SparkPropertyFacet buildFacet(SparkListenerEvent event) {
     Map<String, Object> m = new HashMap<>();
     Arrays.stream(conf.getAll())
-        .filter(t -> allowedProperties.contains(t._1))
+        .filter(t -> captureAll || allowedProperties.contains(t._1))
         .forEach(t -> m.putIfAbsent(t._1, t._2));
     if (event instanceof SparkListenerJobStart) {
       SparkListenerJobStart startEvent = (SparkListenerJobStart) event;
       startEvent.properties().entrySet().stream()
-          .filter(e -> allowedProperties.contains(e.getKey()))
+          .filter(e -> captureAll || allowedProperties.contains(e.getKey()))
           .forEach(e -> m.putIfAbsent(e.getKey().toString(), e.getValue()));
     }
 
     try {
       SparkSession session = SparkSession.active();
-      allowedProperties.forEach(
-          item -> {
-            try {
-              m.putIfAbsent(item, session.conf().get(item));
-            } catch (Exception e) {
-              // RuntimeConfig.get throws for an unset key. Guard per key so that one
-              // property missing from the run-time config does not discard the others.
-              log.debug("Key {} from capturedProperties is not set in the run-time config", item);
-            }
-          });
+      if (captureAll) {
+        ScalaConversionUtils.fromMap(session.conf().getAll()).forEach(m::putIfAbsent);
+      } else {
+        allowedProperties.forEach(
+            item -> {
+              try {
+                m.putIfAbsent(item, session.conf().get(item));
+              } catch (Exception e) {
+                // RuntimeConfig.get throws for an unset key. Guard per key so that one
+                // property missing from the run-time config does not discard the others.
+                log.debug("Key {} from capturedProperties is not set in the run-time config", item);
+              }
+            });
+      }
     } catch (Exception e) {
       // need to catch exception so that org.apache.spark.SparkException for Spark 4.0 is caught
       // which is not thrown for other Spark versions

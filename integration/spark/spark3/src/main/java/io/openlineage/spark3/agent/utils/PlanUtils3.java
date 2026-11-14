@@ -11,10 +11,13 @@ import io.openlineage.spark.agent.lifecycle.plan.catalog.UnsupportedCatalogExcep
 import io.openlineage.spark.agent.util.ScalaConversionUtils;
 import io.openlineage.spark.api.OpenLineageContext;
 import io.openlineage.spark3.agent.lifecycle.plan.catalog.MissingDatasetIdentifierCatalogException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan;
@@ -53,9 +56,9 @@ public class PlanUtils3 {
     } catch (UnsupportedCatalogException ex) {
       log.warn(
           String.format(
-              "Catalog %s is unsupported: %s",
+              "Catalog %s is unsupported: %s. Falling back to identifier-based dataset identity.",
               catalog.getClass().getCanonicalName(), ex.getMessage()));
-      return Optional.empty();
+      return getDatasetIdentifierFromIdentifier(catalog, identifier);
     } catch (MissingDatasetIdentifierCatalogException ex) {
       log.debug(
           String.format(
@@ -72,7 +75,25 @@ public class PlanUtils3 {
   }
 
   /**
-   * If a {@link SparkPlan} contains {@link InMemoryRelation}, this means it uses a cached dataset
+   * Fallback that rebuilds a {@link DatasetIdentifier} directly from the {@link Identifier} when
+   * the {@link TableCatalog} is not supported by any catalog handler. This preserves lineage for
+   * custom catalogs (e.g. UDW) instead of dropping the dataset entirely. The namespace is taken
+   * from {@link TableCatalog#name()} and the name is composed of the identifier namespace segments
+   * (empty segments filtered out) joined by {@code .} followed by {@link Identifier#name()}.
+   */
+  private static Optional<DatasetIdentifier> getDatasetIdentifierFromIdentifier(
+      TableCatalog catalog, Identifier identifier) {
+    String namespace = catalog.name();
+    String prefix =
+        Arrays.stream(identifier.namespace())
+            .filter(StringUtils::isNotBlank)
+            .collect(Collectors.joining("."));
+    String name =
+        StringUtils.isEmpty(prefix) ? identifier.name() : prefix + "." + identifier.name();
+    return Optional.of(new DatasetIdentifier(name, namespace));
+  }
+
+  /**
    * that was evaluated within different {@link SparkPlan}. This method is used to return a {@link
    * LogicalPlan} of a job that evaluated a cached dataset. This is achieved through a reflection
    * from {@link CacheManager} available in a shared state of spark session.

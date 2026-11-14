@@ -66,15 +66,39 @@ class PlanUtils3Test {
 
   @Test
   void testGetDatasetIdentifierWhenCatalogUnsupported() {
+    when(tableCatalog.name()).thenReturn("turing_ns");
+    when(identifier.namespace()).thenReturn(new String[] {"udw_ns", "default"});
+    when(identifier.name()).thenReturn("xxx");
     try (MockedStatic<CatalogUtils> mocked = mockStatic(CatalogUtils.class)) {
       when(CatalogUtils.getDatasetIdentifier(
               openLineageContext, tableCatalog, identifier, tableProperties))
           .thenThrow(new UnsupportedCatalogException("exception"));
 
-      assertEquals(
-          Optional.empty(),
+      DatasetIdentifier di =
           PlanUtils3.getDatasetIdentifier(
-              openLineageContext, tableCatalog, identifier, tableProperties));
+                  openLineageContext, tableCatalog, identifier, tableProperties)
+              .get();
+      assertEquals("udw_ns.default.xxx", di.getName());
+      assertEquals("turing_ns", di.getNamespace());
+    }
+  }
+
+  @Test
+  void testGetDatasetIdentifierWhenCatalogUnsupportedAndEmptyNamespace() {
+    when(tableCatalog.name()).thenReturn("turing_ns");
+    when(identifier.namespace()).thenReturn(new String[] {});
+    when(identifier.name()).thenReturn("xxx");
+    try (MockedStatic<CatalogUtils> mocked = mockStatic(CatalogUtils.class)) {
+      when(CatalogUtils.getDatasetIdentifier(
+              openLineageContext, tableCatalog, identifier, tableProperties))
+          .thenThrow(new UnsupportedCatalogException("exception"));
+
+      DatasetIdentifier di =
+          PlanUtils3.getDatasetIdentifier(
+                  openLineageContext, tableCatalog, identifier, tableProperties)
+              .get();
+      assertEquals("xxx", di.getName());
+      assertEquals("turing_ns", di.getNamespace());
     }
   }
 

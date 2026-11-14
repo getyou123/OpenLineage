@@ -352,6 +352,34 @@ class SparkGenericIntegrationTest {
             .isPresent());
   }
 
+  @Test
+  @EnabledIfSystemProperty(named = SPARK_VERSION, matches = "([34].*)") // Spark version >= 3.*
+  @SuppressWarnings("unchecked")
+  void sparkEmitsPartitioningFacet() {
+    String outputPath = "/tmp/test_data/test_partitioned_output";
+
+    // partitionBy triggers InsertIntoHadoopFsRelationCommand with non-empty partitionColumns
+    createTempDataset(5).write().partitionBy("b").mode("overwrite").parquet(outputPath);
+    spark.stop();
+
+    List<RunEvent> events = getEventsEmitted(mockServer);
+
+    // the output dataset should carry the custom spark_partitioning facet
+    Optional<OpenLineage.DatasetFacet> partitioningFacet =
+        events.stream()
+            .flatMap(e -> e.getOutputs().stream())
+            .filter(o -> o.getName().endsWith("test_partitioned_output"))
+            .map(o -> o.getFacets().getAdditionalProperties().get("spark_partitioning"))
+            .filter(Objects::nonNull)
+            .findFirst();
+
+    assertThat(partitioningFacet).isPresent();
+
+    List<String> partitionColumns =
+        (List<String>) partitioningFacet.get().getAdditionalProperties().get("partitionColumns");
+    assertThat(partitionColumns).containsExactly("b");
+  }
+
   private Dataset<Row> createTempDataset(int rows) {
     List<Row> rowList =
         Arrays.stream(IntStream.rangeClosed(1, rows).toArray())

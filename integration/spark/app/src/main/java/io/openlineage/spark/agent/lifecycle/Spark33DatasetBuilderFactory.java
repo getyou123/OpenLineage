@@ -7,6 +7,7 @@ package io.openlineage.spark.agent.lifecycle;
 
 import com.google.common.collect.ImmutableList;
 import io.openlineage.client.OpenLineage;
+import io.openlineage.spark.agent.lifecycle.plan.InsertIntoHadoopFsRelationDatasetBuilder;
 import io.openlineage.spark.agent.lifecycle.plan.SaveIntoDataSourceCommandVisitor;
 import io.openlineage.spark.agent.util.DeltaUtils;
 import io.openlineage.spark.api.DatasetFactory;
@@ -50,6 +51,7 @@ public class Spark33DatasetBuilderFactory extends Spark32DatasetBuilderFactory
             .add(new TableContentChangeDatasetBuilder(context, datasetFactory))
             .add(new DeleteFromTableWithFiltersDatasetBuilder(context))
             .add(new CopyIntoCommandOutputDatasetBuilder(context))
+            .add(new InsertIntoHadoopFsRelationDatasetBuilder(context))
             .add(new DeleteCommandOutputDatasetBuilder(context))
             .add(new UpdateCommandOutputDatasetBuilder(context))
             .add(new SubqueryAliasOutputDatasetBuilder(context))

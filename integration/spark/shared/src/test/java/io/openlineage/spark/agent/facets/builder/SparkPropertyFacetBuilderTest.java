@@ -144,6 +144,31 @@ class SparkPropertyFacetBuilderTest {
     }
   }
 
+  @Test
+  void testCaptureAllPropertiesBuild() {
+    SparkContext sparkContext = mock(SparkContext.class);
+    when(sparkContext.getConf())
+        .thenReturn(
+            new SparkConf()
+                .setAppName("SparkPropertyFacetBuilderTest")
+                .setMaster("local")
+                .set("test.key.1", "test")
+                .set("test.key.2", "test2")
+                .set("spark.openlineage.capturedProperties", "*"));
+
+    Consumer<OpenLineage.RunFacet> runFacetConsumer =
+        facet -> {
+          assertThat(facet).isInstanceOf(SparkPropertyFacet.class);
+          assertThat(((SparkPropertyFacet) facet).getProperties())
+              .containsEntry("spark.master", "local")
+              .containsEntry("spark.app.name", "SparkPropertyFacetBuilderTest")
+              .containsEntry("test.key.1", "test")
+              .containsEntry("test.key.2", "test2")
+              .containsEntry("spark.openlineage.capturedProperties", "*");
+        };
+    checkBuild(sparkContext, runFacetConsumer);
+  }
+
   private static void checkBuild(
       SparkContext sparkContext, Consumer<OpenLineage.RunFacet> runFacetConsumer) {
     SparkPropertyFacetBuilder builder =
